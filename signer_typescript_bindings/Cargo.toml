@@ -1,0 +1,38 @@
+[package]
+name = "plume-sig-poseidon"
+version = "0.0.1"
+authors = ["skaunov"]
+edition = "2018"
+keywords = ["nullifier", "zero-knowledge", "ECDSA", "PLUME", "Poseidon", "k256"]
+repository = "https://github.com/plume-sig/zk-nullifier-sig/"
+description = "TODO wrapper around `plume_rustcrypto` crate to produce PLUME signatures in JS contexts using Wasm"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "~0.2.84"
+js-sys = "0.3"
+serde = "*"
+serde-wasm-bindgen = "*"
+
+# plume_arkworks = {version = "", default-features = false} 
+plume_poseidon = {path = "../signer_arkworks"}
+# elliptic-curve = {version = "~0.13.8"}
+# zeroize = "1.8"
+# signature = "^2.2.0"
+# getrandom = { version = "0.2", features = ["js"] }
+# anyhow = "1"
+# sec1 = {version = "~0.7.3", optional = true} # match with `k256`
+ark-serialize = "*"
+
+[dev-dependencies]
+wasm-bindgen-test = "~0.3.34"
+ark-std = "*"
+rand = "*"
+getrandom = { version = "0.2", features = ["js"] }
+
+[profile.release] # This comes from template; docs doesn't tell much about it.
+# Tell `rustc` to optimize for small code size.
+# opt-level = "s"
