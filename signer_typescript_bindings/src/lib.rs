@@ -2,7 +2,6 @@
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress};
 use plume_poseidon::{AffineRepr, CurveGroup};
-use serde_wasm_bindgen::preserve::deserialize;
 use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "verify")]
@@ -72,23 +71,18 @@ impl PlumeSignature {
 }
 
 #[wasm_bindgen(skip_jsdoc)]
-/// @throws a "crypto error" in case of a problem with the secret key
-/// @param {boolean} v1 - is the flag to choose between V1 and V2 output.
-/// @param {Uint8Array} sk - secret key in SEC1 DER format. TODO align with the docs on the signature
+/// @throws TODO test and describe the errors before publishing; it's like will be just the link <https://docs.rs/ark-serialize/0.5.0/ark_serialize/enum.SerializationError.html#variants>, would be nice to re-export then
+/// @param {boolean} isV1 - a flag to choose between V1 and V2 output.
+/// @param {Uint8Array} sk - a secret key: basically the little-endian (LE) [scalar](https://docs.rs/plume_arkworks/latest/plume_arkworks/secp256k1/fields/fr/type.Fr.html); the details of the byte representation are at <https://docs.rs/plume_arkworks/latest/plume_arkworks/trait.CanonicalDeserialize.html>, note that compression isn't rellevant to this type
 /// @param {Uint8Array} msg
 /// @returns {PlumeSignature}
-pub fn sign(v1: bool, sk: &mut [u8], msg: &[u8]) -> Result<PlumeSignature, JsError> {
-    let mut sk_z = <plume_poseidon::Fr as ark_serialize::CanonicalDeserialize>::deserialize_uncompressed(sk.as_ref())?;
+pub fn sign(is_v1: bool, sk: &mut [u8], msg: &[u8]) -> Result<PlumeSignature, JsError> {
+    let mut sk_z = 
+        <plume_poseidon::Fr as ark_serialize::CanonicalDeserialize>::deserialize_uncompressed(sk.as_ref())?;
     sk.zeroize();
     let mut pk_z = (plume_poseidon::Affine::generator() * sk_z).into_affine();
 
-    let mut sig = plume_poseidon::sign(
-        /* there's no `sign` yet in the wrapped crate so `plume_arkworks` was used to facilitate this stage of development; I think `sign` will just try to get a most standard randomness to be as simple
-        and safe as possible, and `sign_with_r` will accept a ready randomness received in more exotic circumstances; ~~thought I don't think the latter one would be useful in a TS context~~ */
-        //      actually feels quite useful -- even for testing; so the question is more like: to feature flag that or not; I don't see a reason to hide that function
-        // &mut rand::rngs::OsRng, 
-        (&pk_z, &sk_z), msg, v1
-    )?;
+    let sig = plume_poseidon::sign(is_v1, sk_z, msg);
     
     sk_z.zeroize();
     let mut writer_point = [0u8; 33];
@@ -99,16 +93,16 @@ pub fn sign(v1: bool, sk: &mut [u8], msg: &[u8]) -> Result<PlumeSignature, JsErr
         // `witness` goes first so that `instance` do the job of "zeroizing" the writers
         witness: PlumeSignaturePrivate { 
             digest_private: {
-                sig.1.digest_private.serialize_uncompressed(writer_scalar.as_mut_slice());
+                sig.1.digest_private.serialize_uncompressed(writer_scalar.as_mut_slice())?;
                 writer_scalar.into()
             },
-            v1specific: if v1 {Some(PlumeSignatureV1Fields {
+            v1specific: if is_v1 {Some(PlumeSignatureV1Fields {
                 r_point: {
-                    sig.1.r_point.serialize_uncompressed(writer_point.as_mut_slice());
+                    sig.1.r_point.serialize_uncompressed(writer_point.as_mut_slice())?;
                     writer_point.into()
                 }, 
                 hashed_to_curve_r: {
-                    sig.1.hashed_to_curve_r.serialize_uncompressed(writer_point.as_mut_slice());
+                    sig.1.hashed_to_curve_r.serialize_uncompressed(writer_point.as_mut_slice())?;
                     writer_point.into()
                 }, 
             })} else {None},
@@ -116,14 +110,14 @@ pub fn sign(v1: bool, sk: &mut [u8], msg: &[u8]) -> Result<PlumeSignature, JsErr
         instance: serde_wasm_bindgen::to_value(&PlumeSignaturePublic { 
             message: sig.0.message, 
             nullifier: {
-                sig.0.nullifier.serialize_uncompressed(writer_point.as_mut_slice());
+                sig.0.nullifier.serialize_uncompressed(writer_point.as_mut_slice())?;
                 writer_point.into()
             }, 
             s: {
-                sig.0.s.serialize_uncompressed(writer_scalar.as_mut_slice());
+                sig.0.s.serialize_uncompressed(writer_scalar.as_mut_slice())?;
                 writer_scalar.into()
             },
-            is_v1: Some(v1)
+            is_v1: Some(is_v1)
         })?.into(), 
     };
     pk_z.zeroize();
@@ -132,9 +126,10 @@ pub fn sign(v1: bool, sk: &mut [u8], msg: &[u8]) -> Result<PlumeSignature, JsErr
 
 #[wasm_bindgen(js_name = sec1DerScalarToBigint)]
 /// This might leave the values in the memory! Don't use for the private values.
+/// 
 /// JS most native format for a scalar is `BigInt`, but it's not really transportable or secure, so for uniformity of the approach `s` in the public part of `PlumeSignature` is defined similar 
 /// to `digest_private`; but if you want to have it as a `BigInt` you can use this utility.
-pub fn sec1derscalar_to_bigint(scalar: &[u8]) -> Result<js_sys::BigInt, JsError> {
+pub fn scalar_to_bigint(scalar: &[u8]) -> Result<js_sys::BigInt, JsError> {
     Ok(js_sys::BigInt::new(&JsValue::from_str(
         plume_poseidon::Fr::deserialize_uncompressed(scalar)?.to_string().as_str()
             // plume_rustcrypto::SecretKey::from_sec1_der(scalar)?
@@ -150,11 +145,12 @@ pub fn sec1derscalar_to_bigint(scalar: &[u8]) -> Result<js_sys::BigInt, JsError>
 
 #[wasm_bindgen]
 /// This might leave the values in the memory! Don't use for the private values.
-/// Utility to convert the used `arkworks` serialization of `Affine` to SEC1 bytes compressed.
-pub fn nullifier_to_sec1(affine_arkworks: &[u8]) -> Result<Vec<u8>, JsError> {
-    Ok(plume_poseidon::affine_to_bytes(
+/// 
+/// Utility to convert the used `arkworks` serialization of `Affine` to SEC1 bytes compressed. For the identity element returns `undefined`.
+pub fn nullifier_to_sec1(affine_arkworks: &[u8]) -> Result<Option<Vec<u8>>, JsError> {
+    Ok(plume_poseidon::sec1_affine(
         &plume_poseidon::Affine::deserialize_uncompressed(affine_arkworks)?
-    ))
+    ).map(|v| v.to_vec()))
 }
 
 // TODO deprecate when `verify` gone

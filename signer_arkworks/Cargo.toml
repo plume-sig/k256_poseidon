@@ -1,15 +1,15 @@
 [package]
 name = "plume_poseidon"
-version = "0.0.1"
+version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-# bn254_blackbox_solver = {path = "/home/devbox/Desktop/noir/acvm-repo/bn254_blackbox_solver"}
-# acir_field = {path = "noir/acvm-repo/acir_field"}
-
-plume_arkworks = "^0.0.2"
-plume_bn254 = {git = "https://github.com/plume-sig/bn254", tag = "v0.0.1"}
+plume_arkworks = "^0.0.4"
+plume_bn254 = {git = "https://github.com/plume-sig/bn254"}
 
 # ark-bn254 = "*"
 ark-ff = "*"
 # ark-ec = "*"
+
+# synced to the `ark-std` version from `ark-ff`
+rand = {version = "0.8.5", features = ["getrandom"]} 

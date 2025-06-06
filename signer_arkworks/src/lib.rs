@@ -1,32 +1,55 @@
 //! Matches <https://github.com/signorecello/zk-nullifier-sig/blob/main/circuits/noir/src/curves/secp256k1.nr>
+//!
+//! Signing functions are to be finished when test vectors will be agreeing.
 
+pub mod format_message;
 pub mod hashing;
 
-// use ark_ff::UniformRand;
 pub use plume_arkworks::{
-    secp256k1, Affine, BigInteger, CanonicalSerialize, Fr, PrimeField,
-    PlumeSignaturePrivate, PlumeSignaturePublic, Zeroize
+    Affine, BigInteger, CanonicalSerialize, Fr, PlumeSignaturePrivate, PlumeSignaturePublic,
+    PrimeField, Zeroize, secp256k1,
 };
 // for the `wasm_bindgen` based crate
-pub use plume_arkworks::{AffineRepr, CurveGroup, affine_to_bytes};
+pub use plume_arkworks::{AffineRepr, CurveGroup, sec1_affine};
 
-// pub fn sign(is_v1: bool, msg: &[u8], sk: Fr) -> (PlumeSignaturePublic, PlumeSignaturePrivate) {
-//     // TODO check `rand` is ok here
-//     sign_with_r(is_v1, msg, sk, Fr::rand(&mut OsRng))
-// }
+/// Sign a message.
+/* @skaunov believe `OsRng` is a fine compromise here to simplify the API, and might cover all the need the lib will encounter since it provides a method
+to pass the `r` by value anyway */
+pub fn sign(is_v1: bool, sk: Fr, msg: &[u8]) -> (PlumeSignaturePublic, PlumeSignaturePrivate) {
+    sign_with_r(
+        is_v1,
+        sk,
+        msg,
+        <Fr as ark_ff::UniformRand>::rand(&mut plume_arkworks::rand::rngs::OsRng),
+    )
+}
 
-// fn sign_with_r(is_v1: bool, msg: &[u8], sk: Fr, r: Fr) -> (PlumeSignaturePublic, PlumeSignaturePrivate) {
-//     let s_point = <secp256k1::Config as plume_arkworks::SWCurveConfig>::GENERATOR * s;
+/// Sign a message using the specified `r` value.
+///
+/// # WARNING
+/// Makes sense only in a constrained environment which lacks a secure RNG.
+// TODO it'd be nice to feature flag this, but for current level of traction a warning is a more natural communication to an user
+pub fn sign_with_r(
+    is_v1: bool,
+    sk: Fr,
+    msg: &[u8],
+    r: Fr,
+) -> (PlumeSignaturePublic, PlumeSignaturePrivate) {
+    let s_point = <secp256k1::Config as plume_arkworks::SWCurveConfig>::GENERATOR * sk;
 
-//     let res = (
-//         PlumeSignaturePublic(secp256k1::Config::GENERATOR * sk + secp256k1::Config::GENERATOR * r),
-//         PlumeSignaturePrivate(sk, r),
-//     );
+    let res: (PlumeSignaturePublic, PlumeSignaturePrivate) = todo!(
+        "
+        PlumeSignaturePublic(secp256k1::Config::GENERATOR * sk + secp256k1::Config::GENERATOR * r),
+        PlumeSignaturePrivate(sk, r),
+    "
+    );
 
-//     sk.zeroize();
-//     // TODO add all the others
-//     r.zeroize();
-// }
+    sk.zeroize();
+    // TODO check nothing was left behind
+    r.zeroize();
+
+    res
+}
 
 /// Returns `None` if `pk` is the identity element.
 pub fn check_ec_equations(
@@ -39,33 +62,16 @@ pub fn check_ec_equations(
     let s_point = <secp256k1::Config as plume_arkworks::SWCurveConfig>::GENERATOR * s;
     let r_point = (s_point - pk * c).into();
 
-    let plume_msg = form_plume_msg(msg, &pk)?;
+    let plume_msg = format_message::form_plume_msg(msg, &pk)?;
     let hashed_to_curve = hashing::hash_to_curve(&plume_msg);
     if hashed_to_curve.is_err() {
-        return Some(Err(hashed_to_curve
-            .err()
-            .expect("checked in the condition")));
+        return Some(Err(hashed_to_curve.expect_err("checked in the condition")));
     }
     let hashed_to_curve = hashed_to_curve.expect("just checked conditionally");
     let h_pow_s = hashed_to_curve * s;
     let hashed_to_curve_r = (h_pow_s - nullifier * c).into();
 
     Some(Ok((r_point, hashed_to_curve_r, hashed_to_curve)))
-}
-
-/// Returns `None` if `pk` is the identity element.
-pub fn form_plume_msg(msg: &[u8], pk: &Affine) -> Option<Vec<u8>> {
-    let mut writer = [0u8; 33];
-    pk.serialize_compressed(writer.as_mut_slice()).expect("the type serialization is completely covered and the `writer` accomodates the `Result` completely");
-    writer.reverse();
-    writer[0] = 
-        // 2 + plume_arkworks::AffineRepr::xy(pk)?
-        //     .1
-        //     .into_bigint()
-        //     .to_bytes_le()[0]
-        //     & 1;
-        if plume_arkworks::AffineRepr::y(pk)?.into_bigint().is_odd() { 3 } else { 2 };
-    Some([msg, &writer].concat().try_into().expect("`Vec` as the most ubiquitous one will always able to accomodate this, and the types are matched precisely"))
 }
 
 #[cfg(test)]

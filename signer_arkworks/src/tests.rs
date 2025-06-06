@@ -1,6 +1,6 @@
 use plume_arkworks::{secp256k1::fq::Fq, Affine, CurveGroup, Fr, PrimeField};
 
-use crate::hashing::hash_to_curve;
+// use crate::hashing::hash_to_curve;
 
 use super::*;
 
@@ -68,7 +68,7 @@ fn test_plume_v2_secp256k1() {
     
     // also it's not from `typescript`
     
-    assert_eq!(H, dbg!(super::hashing::hash_to_curve(&form_plume_msg(&msg, &pk).unwrap())).unwrap());
+    assert_eq!(H, dbg!(super::hashing::hash_to_curve(&format_message::form_plume_msg(&msg, &pk).unwrap())).unwrap());
     
     let nullifier = H * sk;
 

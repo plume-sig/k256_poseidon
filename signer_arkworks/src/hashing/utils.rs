@@ -1,5 +1,5 @@
 use plume_arkworks::PrimeField;
-use plume_bn254::{
+pub use plume_bn254::{
     BigInteger, BlackBoxResolutionError, GenericFieldElement, pack_bytes, poseidon_hash,
 };
 
@@ -18,15 +18,11 @@ pub(super) fn bytes_to_registers(ui: [u8; 48]) -> Fq {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0,
     ]);
-    let mut small = [0 as u8; 32];
-    let mut big = [0 as u8; 32];
+    let mut small = [0u8; 32];
+    let mut big = [0u8; 32];
 
-    for i in 0..16 {
-        small[i + 16] = ui[i + 32];
-    }
-    for i in 0..32 {
-        big[i] = ui[i];
-    }
+    small[16..(16 + 16)].copy_from_slice(&ui[32..(16 + 32)]);
+    big.copy_from_slice(&ui[..32]);
     let res = Fq::from_be_bytes_mod_order(&big);
     res * shift + Fq::from_be_bytes_mod_order(&small)
 }
@@ -50,9 +46,7 @@ pub(super) fn hash_b(b_idx: u8, b: [u8; 32]) -> Result<[u8; 32], BlackBoxResolut
     assert!(b_idx < 8);
     let mut preimage = [0; 32 + 1 + 50];
 
-    for i in 0..32 {
-        preimage[i] = b[i];
-    }
+    preimage[..32].copy_from_slice(&b);
 
     preimage[32] = b_idx;
 
@@ -65,7 +59,7 @@ pub(super) fn hash_b(b_idx: u8, b: [u8; 32]) -> Result<[u8; 32], BlackBoxResolut
     Ok(poseidon_hash(
         packed_preimage
             .into_iter()
-            .map(|x| GenericFieldElement::from_repr(x))
+            .map(GenericFieldElement::from_repr)
             .collect::<Vec<_>>()
             .as_slice(),
         false,
@@ -83,9 +77,7 @@ pub(super) fn msg_prime(msg: &[u8]) -> Result<[u8; 32], BlackBoxResolutionError>
 
     let mut preimage = [0].repeat(64 + n + 2 + 1 + 50);
 
-    for i in 0..n {
-        preimage[64 + i] = msg[i];
-    }
+    preimage[64..(n + 64)].copy_from_slice(msg);
 
     let lib_str = [0, 96];
     for i in 0..lib_str.len() {

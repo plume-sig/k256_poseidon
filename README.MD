@@ -1,3 +1,6 @@
+[The main README-file is in the other repo](https://github.com/plume-sig/zk-nullifier-sig/blob/main/README.md); here's the update to it regarding the parts which got their own repo. 
+\ TODO streamline README-files to be helpful on the levels of the org, a (suite) repo, and a package
+________
 ...
 
 ## Usage

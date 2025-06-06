@@ -31,13 +31,11 @@ impl ark_ff::field_hashers::HashToField<Fq> for AztecFieldHasher {
         let expand_message_xmd =
             expand_message_xmd(msg).expect("`arkworks` panics due to `BlackBoxResolutionError`");
 
-        let mut u0_bytes_to_registers = [0 as u8; 48];
-        let mut u1_bytes_to_registers = [0 as u8; 48];
+        let mut u0_bytes_to_registers = [0u8; 48];
+        let mut u1_bytes_to_registers = [0u8; 48];
 
-        for i in 0..48 {
-            u0_bytes_to_registers[i] = expand_message_xmd[i];
-            u1_bytes_to_registers[i] = expand_message_xmd[48 + i];
-        }
+        u0_bytes_to_registers.copy_from_slice(&expand_message_xmd[..48]);
+        u1_bytes_to_registers.copy_from_slice(&expand_message_xmd[48..(48 + 48)]);
 
         if 2 == N {
             vec![
@@ -59,16 +57,10 @@ pub fn expand_message_xmd(msg: &[u8]) -> Result<[u8; 96], plume_bn254::BlackBoxR
     let b2 = hash_bi(2, &b0, &b1)?;
     let b3 = hash_bi(3, &b0, &b2)?;
 
-    let mut out = [0 as u8; 96];
-    for i in 0..32 {
-        out[i] = b1[i];
-    }
-    for i in 0..32 {
-        out[32 + i] = b2[i];
-    }
-    for i in 0..32 {
-        out[64 + i] = b3[i];
-    }
+    let mut out = [0u8; 96];
+    out[..32].copy_from_slice(&b1);
+    out[32..(32 + 32)].copy_from_slice(&b2);
+    out[64..(32 + 64)].copy_from_slice(&b3);
 
     Ok(out)
 }
