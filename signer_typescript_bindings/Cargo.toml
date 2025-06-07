@@ -22,16 +22,15 @@ plume_poseidon = {path = "../signer_arkworks"}
 # elliptic-curve = {version = "~0.13.8"}
 # zeroize = "1.8"
 # signature = "^2.2.0"
-# getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.2", features = ["js"] }
 # anyhow = "1"
 # sec1 = {version = "~0.7.3", optional = true} # match with `k256`
 ark-serialize = "*"
 
 [dev-dependencies]
 wasm-bindgen-test = "~0.3.34"
-ark-std = "*"
-rand = "*"
-getrandom = { version = "0.3", features = ["wasm_js"] }
+# ark-std = "*"
+# rand = "*"
 
 [profile.release] # This comes from template; docs doesn't tell much about it.
 # Tell `rustc` to optimize for small code size.

@@ -4,8 +4,6 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress};
 use plume_poseidon::{AffineRepr, CurveGroup};
 use wasm_bindgen::prelude::*;
 
-#[cfg(feature = "verify")]
-use elliptic_curve::sec1::FromEncodedPoint;
 use plume_poseidon::Zeroize;
 
 #[wasm_bindgen(getter_with_clone)]
@@ -40,19 +38,22 @@ pub struct PlumeSignaturePublic {
 #[wasm_bindgen(getter_with_clone)]
 /// @typedef {Object} PlumeSignaturePrivate - a wrapper around 
 /// <https://docs.rs/plume_arkworks/latest/plume_arkworks/struct.PlumeSignaturePrivate.html>.
+/// 
+/// `v1specific` property differintiates whether V1 or V2 variant will be used.
 #[derive(Clone)]
 pub struct PlumeSignaturePrivate {
     /// [`plume_arkworks::Fr`](https://docs.rs/plume_arkworks/latest/plume_arkworks/secp256k1/fields/fr/type.Fr.html) 
     /// is represented as an `Uint8Array` from <https://docs.rs/plume_arkworks/latest/plume_arkworks/trait.CanonicalSerialize.html#method.serialize_uncompressed>.
     pub digest_private: Vec<u8>,
+    /// Signature data for variant 1 signatures.
     pub v1specific: Option<PlumeSignatureV1Fields>,
 }
 
 #[wasm_bindgen(getter_with_clone)]
-/// @typedef {Object} PlumeSignatureV1Fields - Wrapper around 
-/// [`plume_rustcrypto::PlumeSignatureV1Fields`](https://docs.rs/plume_rustcrypto/latest/plume_rustcrypto/struct.PlumeSignatureV1Fields.html).
+/// @typedef {Object} PlumeSignatureV1Fields - Nested structure holding the additional signature data used in V1.
 #[derive(Clone)]
 pub struct PlumeSignatureV1Fields {
+    /// the point representing the randomness
     pub r_point: Vec<u8>,
     pub hashed_to_curve_r: Vec<u8>,
 }
@@ -80,13 +81,14 @@ pub fn sign(is_v1: bool, sk: &mut [u8], msg: &[u8]) -> Result<PlumeSignature, Js
     let mut sk_z = 
         <plume_poseidon::Fr as ark_serialize::CanonicalDeserialize>::deserialize_uncompressed(sk.as_ref())?;
     sk.zeroize();
-    let mut pk_z = (plume_poseidon::Affine::generator() * sk_z).into_affine();
 
     let sig = plume_poseidon::sign(is_v1, sk_z, msg);
     
     sk_z.zeroize();
     let mut writer_point = [0u8; 33];
     let mut writer_scalar = [0u8; 32];
+    #[cfg(debug_assertions)]
+    let mut pk_z = (plume_poseidon::Affine::generator() * sk_z).into_affine();
     debug_assert_eq!(2 * 32, pk_z.serialized_size(Compress::No));
     debug_assert_eq!(32, sk_z.serialized_size(Compress::No));
     let res = PlumeSignature { 
@@ -120,7 +122,7 @@ pub fn sign(is_v1: bool, sk: &mut [u8], msg: &[u8]) -> Result<PlumeSignature, Js
             is_v1: Some(is_v1)
         })?.into(), 
     };
-    pk_z.zeroize();
+    // pk_z.zeroize();
     Ok(res)
 }
 
@@ -151,49 +153,4 @@ pub fn nullifier_to_sec1(affine_arkworks: &[u8]) -> Result<Option<Vec<u8>>, JsEr
     Ok(plume_poseidon::sec1_affine(
         &plume_poseidon::Affine::deserialize_uncompressed(affine_arkworks)?
     ).map(|v| v.to_vec()))
-}
-
-// TODO deprecate when `verify` gone
-#[cfg(feature = "verify")]
-impl TryInto<plume_rustcrypto::PlumeSignature> for PlumeSignature {
-    type Error = JsError;
-
-    fn try_into(self) -> Result<plume_rustcrypto::PlumeSignature, Self::Error> {
-        let point_check = |point_bytes: Vec<u8>| -> Result<AffinePoint, anyhow::Error> {
-            let point_encoded = sec1::point::EncodedPoint::from_bytes(point_bytes)?; // TODO improve formatting (quotes e.g.)
-            let result = plume_rustcrypto::AffinePoint::from_encoded_point(&point_encoded);
-            if result.is_none().into() {
-                Err(anyhow::Error::msg("the point isn't on the curve"))
-            } else {
-                Ok(result.expect("`None` is processed the line above"))
-            }
-        };
-
-        let err_field_wrap = |name_field: &str, er: anyhow::Error| -> JsError {
-            JsError::new(
-                ("while proccessing ".to_owned() + name_field + " :" + er.to_string().as_str())
-                    .as_str(),
-            )
-        };
-
-        Ok(plume_rustcrypto::PlumeSignature {
-            message: self.message,
-            pk: point_check(self.pk).map_err(|er| err_field_wrap("`pk`", er))?,
-            // plume_rustcrypto::AffinePoint::try_from(self.pk)?, //.try_into<[u8; 33]>()?.into(),
-            nullifier: point_check(self.nullifier)
-                .map_err(|er| err_field_wrap("`nullifier`", er))?,
-            c: plume_rustcrypto::SecretKey::from_sec1_der(&self.c)?.into(),
-            s: plume_rustcrypto::SecretKey::from_sec1_der(&self.s)?.into(), //scalar_from_bigint(self.s).map_err(|er| err_field_wrap("`s`", er))?,
-            v1specific: if let Some(v1) = self.v1specific {
-                Some(plume_rustcrypto::PlumeSignatureV1Fields {
-                    r_point: point_check(v1.r_point)
-                        .map_err(|er| err_field_wrap("`r_point`", er))?,
-                    hashed_to_curve_r: point_check(v1.hashed_to_curve_r)
-                        .map_err(|er| err_field_wrap("`hashed_to_curve_r`", er))?,
-                })
-            } else {
-                None
-            },
-        })
-    }
 }
